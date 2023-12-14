@@ -1,0 +1,77 @@
+{
+  "produits": [
+    {
+      "id": 1,
+      "nom": "Plante verte",
+      "description": "Une belle plante d'intérieur pour décorer votre maison.",
+      "prix": 19.99,
+      "stock": 50,
+      "image": "https://www.fleursonaturel.com/594-large_default/areca.jpg",
+      "categorie": "Plantes d'intérieur"
+    },
+    {
+      "id": 2,
+      "nom": "Rosier 'Amour éternel'",
+      "description": "Rosier à fleurs rouges pour un jardin romantique.",
+      "prix": 24.50,
+      "stock": 30,
+      "image": "https://les-fleurs-de-majolan.fr/wp-content/uploads/2023/01/Amour-eternel.jpg",
+      "categorie": "Plantes à fleurs"
+    },
+    {
+      "id": 3,
+      "nom": "Engrais universel",
+      "description": "Engrais organique pour tous types de plantes.",
+      "prix": 9.99,
+      "stock": 100,
+      "image": "https://m2.jardinetsaisons.fr/5593-thickbox_default/engrais-complet-universel-10-kg-.jpg",
+      "categorie": "Soins des plantes"
+    },
+    {
+      "id": 4,
+      "nom": "Tondeuse électrique",
+      "description": "Tondeuse légère et facile à utiliser pour la pelouse.",
+      "prix": 159.99,
+      "stock": 20,
+      "image": "https://m.media-amazon.com/images/I/81D0wdHa+UL._AC_UF1000,1000_QL80_.jpg",
+      "categorie": "Outils de jardinage"
+    },
+    {
+      "id": 5,
+      "nom": "Hortensia 'Bouquet magique'",
+      "description": "Hortensia à fleurs multicolores pour un jardin éclatant.",
+      "prix": 29.99,
+      "stock": 15,
+      "image": "https://www.plusdefleurs.com/wp-content/uploads/2022/10/pourpre-magique-hortensia.jpg",
+      "categorie": "Plantes à fleurs"
+    },
+    {
+      "id": 6,
+      "nom": "Pot de fleurs en céramique",
+      "description": "Pot élégant pour vos plantes d'intérieur.",
+      "prix": 12.50,
+      "stock": 40,
+      "image": "https://www.cdiscount.com/pdt2/4/5/1/1/700x700/vor3263003650451/rw/10-pcs-mini-pots-en-terre-cuite-de-fleurs-ceramiqu.jpg",
+      "categorie": "Accessoires de jardin"
+    },
+    {
+      "id": 7,
+      "nom": "Sécateur professionnel",
+      "description": "Outil de taille robuste pour les jardiniers expérimentés.",
+      "prix": 34.99,
+      "stock": 25,
+      "image": "https://fr.jardins-animes.com/images/secateur-felco-2.jpg",
+      "categorie": "Outils de jardinage"
+    },
+    {
+      "id": 8,
+      "nom": "Terreau spécial plantes vertes",
+      "description": "Terreau enrichi pour favoriser la croissance des plantes d'intérieur.",
+      "prix": 7.99,
+      "stock": 60,
+      "image": "https://www.labonnegraine.com/9006-large_default/terreau-rempotage-bio.jpg",
+      "categorie": "Soins des plantes"
+    }
+
+  ]
+}
