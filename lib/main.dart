@@ -92,7 +92,7 @@ class _SearchPageWrapperState extends State<SearchPageWrapper> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => RFIDReaderPage(),
+                      builder: (context) => RFIDReaderPage(productsData: productsData),
                     ),
                   );
                 },
@@ -410,6 +410,9 @@ class ProductsPage extends StatelessWidget {
   }
 }
 class RFIDReaderPage extends StatefulWidget {
+  final List<dynamic> productsData;
+
+  RFIDReaderPage({required this.productsData});
   @override
   _RFIDReaderPageState createState() => _RFIDReaderPageState();
 }
@@ -454,22 +457,39 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
     }
   }
 
-  void updateTags(dynamic result) {
-    List<TagEpc> tags = TagEpc.parseTags(result);
-    for (TagEpc tag in tags) {
-      print('Tag EPC: ${tag.epc}, RSSI: ${tag.rssi}');
-    }
-    setState(() {
-      _data = tags;
-    });
-  }
+
 
   void updateConnection(dynamic result) {
     setState(() {
       isConnectedStatus = result;
     });
   }
+  void updateTags(dynamic result) {
+    List<TagEpc> tags = TagEpc.parseTags(result);
+    for (TagEpc tag in tags) {
+      print('Tag EPC: ${tag.epc}, RSSI: ${tag.rssi}');
 
+      // Recherche du produit correspondant au tag EPC scanné dans widget.productsData
+      dynamic foundProduct = widget.productsData.firstWhere(
+            (product) => product['tag'] == tag.epc, // Assurez-vous d'avoir la propriété 'tag' dans votre JSON
+        orElse: () => null,
+      );
+
+      if (foundProduct != null) {
+        print('Produit trouvé: ${foundProduct['nom']}');
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProductDetailPage(product: foundProduct),
+          ),
+        );
+      }
+    }
+
+    setState(() {
+      _data = tags;
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
