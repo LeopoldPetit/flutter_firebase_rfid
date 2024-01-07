@@ -1,31 +1,51 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nordic_id/nordic_id.dart';
 import 'package:nordic_id/tag_epc.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
 
-void main() {
-  runApp(MyApp());
+// Classe pour initialiser Firebase
+class FirebaseInitializer {
+  // Méthode statique pour initialiser Firebase
+  static Future<void> initialize() async {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 }
 
+// Point d'entrée de l'application
+Future<void> main() async {
+  runApp(MyApp());
+  await FirebaseInitializer.initialize(); // Initialisation de Firebase
+}
+
+// Classe principale de l'application
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     initializeNordicId(); // Initialise la connexion Nordic ID
     return MaterialApp(
-      title: 'Jardinerie',
+      title: 'Jardinerie', // Titre de l'application
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        primarySwatch: Colors.green, // Couleur principale de l'application
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      initialRoute: '/',
+      initialRoute: '/', // Route initiale de l'application
       routes: {
-        '/': (context) => SearchPageWrapper(),
-        '/categories': (context) => CategoriesPage(),
+        '/': (context) => SearchPageWrapper(), // Page de recherche
+        '/categories': (context) => CategoriesPage(), // Page de catégories
       },
     );
   }
 
+  // Méthode pour initialiser Nordic ID
   Future<void> initializeNordicId() async {
     try {
       await NordicId.initialize; // Initialise Nordic ID pour la lecture RFID
@@ -35,28 +55,40 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// Classe pour la page de recherche
 class SearchPageWrapper extends StatefulWidget {
   @override
   _SearchPageWrapperState createState() => _SearchPageWrapperState();
 }
 
 class _SearchPageWrapperState extends State<SearchPageWrapper> {
-  late List<dynamic> productsData = [];
+  late List<dynamic> productsData = []; // Liste pour stocker les données des produits
 
   @override
   void initState() {
     super.initState();
-    loadJsonData(); // Charge les données du fichier JSON au démarrage
+    loadFirestoreData(); // Charge les données Firestore au démarrage de la page
   }
 
-  Future<void> loadJsonData() async {
-    String data = await DefaultAssetBundle.of(context).loadString('assets/data.json'); // Charge le fichier JSON
-    Map<String, dynamic> jsonData = json.decode(data); // Décode le JSON en une structure de données
-    List<dynamic> products = jsonData['produits']; // Récupère la liste de produits
-    setState(() {
-      productsData = products; // Met à jour les données des produits dans l'état du widget
-    });
+  // Méthode pour charger les données Firestore
+  Future<void> loadFirestoreData() async {
+    try {
+      // Vérifiez que Firebase a été initialisé avant d'utiliser Firestore
+      if (Firebase.apps.length == 0) {
+        await Firebase.initializeApp();
+      }
+
+      // Récupère les données de la collection 'produits' de Firestore
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('produits').get();
+      List<dynamic> products = querySnapshot.docs.map((doc) => doc.data()).toList();
+      setState(() {
+        productsData = products; // Met à jour les données des produits
+      });
+    } catch (e) {
+      print('Erreur lors du chargement des données Firestore : $e'); // Affiche les erreurs de chargement des données
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -109,53 +141,160 @@ class _SearchPageWrapperState extends State<SearchPageWrapper> {
             ],
           ),
         ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AddProductPage(), // Navigue vers la page d'ajout de produit
+              ),
+            );
+          },
+          child: Icon(Icons.add),
+        ),
       );
     }
   }
 }
+class AddProductPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Ajouter un produit'),
+      ),
+      body: ProductDetailForm(), // Utilisez le même formulaire que ProductDetailPage
+    );
+  }
+}
 
-class ProductDetailPage extends StatelessWidget {
-  final dynamic product;
 
-  ProductDetailPage({required this.product});
+class ProductDetailForm extends StatefulWidget {
+  @override
+  _ProductDetailFormState createState() => _ProductDetailFormState();
+}
+
+class _ProductDetailFormState extends State<ProductDetailForm> {
+  late TextEditingController nomController;
+  late TextEditingController prixController;
+  late TextEditingController stockController;
+  late TextEditingController categorieController;
+  late TextEditingController descriptionController;
+  File? _image;
+  final picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    nomController = TextEditingController();
+    prixController = TextEditingController();
+    stockController = TextEditingController();
+    categorieController = TextEditingController();
+    descriptionController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    nomController.dispose();
+    prixController.dispose();
+    stockController.dispose();
+    categorieController.dispose();
+    descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> addProductToFirestore() async {
+    try {
+      // Vérifiez si une image est sélectionnée
+      if (_image != null) {
+        // Générez un nom d'image unique
+        String imageFileName = DateTime.now().millisecondsSinceEpoch.toString() + '.jpg';
+
+        // Téléchargez l'image dans Firebase Storage avec un nom unique
+        Reference ref = FirebaseStorage.instance.ref().child('images').child(imageFileName);
+        UploadTask uploadTask = ref.putFile(_image!);
+        TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => null);
+
+        // Récupérez l'URL de l'image depuis Firebase Storage
+        String imageUrl = await taskSnapshot.ref.getDownloadURL();
+
+        // Enregistrez les autres données et l'URL de l'image dans Firestore
+        Map<String, dynamic> productData = {
+          'nom': nomController.text,
+          'prix': double.parse(prixController.text),
+          'stock': int.parse(stockController.text),
+          'categorie': categorieController.text,
+          'description': descriptionController.text,
+          'image': imageUrl, // Ajoutez l'URL de l'image dans Firestore
+        };
+
+        await FirebaseFirestore.instance.collection('produits').add(productData);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Produit ajouté avec succès!')),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SearchPageWrapper(),
+          ),
+        ); // Revenir à la page précédente
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Veuillez sélectionner une image')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de l\'ajout du produit: $e')),
+      );
+    }
+  }
+
+  Future<void> _getImage() async {
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Affiche les détails du produit dans une page Scaffold
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Détails du produit'),
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Affiche l'image du produit
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8.0),
-              child: Image.network(
-                product['image'],
-                height: 200,
-                fit: BoxFit.cover,
-              ),
-            ),
-            SizedBox(height: 20),
-            // Affiche les détails du produit tels que le nom, le prix, le stock, la catégorie et la description
-            _buildDetailItem('Nom', product['nom']),
-            _buildDetailItem('Prix', '${product['prix']} \€'),
-            _buildDetailItem('Stock', '${product['stock']}'),
-            _buildDetailItem('Catégorie', product['categorie']),
-            _buildDetailItem('Description', product['description']),
-            // Autres détails du produit à afficher...
-          ],
-        ),
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _image != null
+              ? Image.file(_image!) // Affichage de l'image choisie
+              : ElevatedButton(
+            onPressed: () {
+              _getImage(); // Bouton pour sélectionner une image depuis la galerie
+            },
+            child: Text('Ajouter une image'),
+          ),
+          _buildEditableDetailItem('Nom', nomController),
+          _buildEditableDetailItem('Prix', prixController),
+          _buildEditableDetailItem('Stock', stockController),
+          _buildEditableDetailItem('Catégorie', categorieController),
+          _buildEditableDetailItem('Description', descriptionController),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              addProductToFirestore();
+            },
+            child: Text('Ajouter le produit'),
+          ),
+        ],
       ),
     );
   }
 
-  // Construit un élément de détail du produit avec un titre et une valeur
-  Widget _buildDetailItem(String title, String value) {
+  Widget _buildEditableDetailItem(String title, TextEditingController controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -167,15 +306,241 @@ class ProductDetailPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(fontSize: 16),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+          ),
         ),
-        Divider(height: 20, thickness: 1, color: Colors.grey),
+        SizedBox(height: 16),
       ],
     );
   }
 }
+class ProductDetailPage extends StatefulWidget {
+  final dynamic product;
+
+  ProductDetailPage({required this.product});
+
+  @override
+  _ProductDetailPageState createState() => _ProductDetailPageState();
+}
+
+class _ProductDetailPageState extends State<ProductDetailPage> {
+  late TextEditingController nomController;
+  late TextEditingController prixController;
+  late TextEditingController stockController;
+  late TextEditingController categorieController;
+  late TextEditingController descriptionController;
+  File? _image;
+  final picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    nomController = TextEditingController(text: widget.product['nom']);
+    prixController = TextEditingController(text: widget.product['prix'].toString());
+    stockController = TextEditingController(text: widget.product['stock'].toString());
+    categorieController = TextEditingController(text: widget.product['categorie']);
+    descriptionController = TextEditingController(text: widget.product['description']);
+  }
+
+  @override
+  void dispose() {
+    nomController.dispose();
+    prixController.dispose();
+    stockController.dispose();
+    categorieController.dispose();
+    descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> deleteProduct() async {
+    try {
+      // Obtenez le document à partir de Firestore pour récupérer l'ID
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('produits')
+          .where('nom', isEqualTo: widget.product['nom']) // Utilisez un champ unique pour obtenir le document
+          .get();
+
+      String productId = querySnapshot.docs.first.id; // Récupère l'ID du premier document correspondant
+
+      // Supprime le document correspondant à l'ID récupéré
+      await FirebaseFirestore.instance.collection('produits').doc(productId).delete();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Produit supprimé avec succès!')),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SearchPageWrapper(),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la suppression du produit: $e')),
+      );
+    }
+  }
+
+
+  Future<void> updateProductData() async {
+    try {
+      // Obtenez le document à partir de Firestore pour récupérer l'ID
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('produits')
+          .where('nom', isEqualTo: widget.product['nom']) // Utilisez un champ unique pour obtenir le document
+          .get();
+
+      String productId = querySnapshot.docs.first.id; // Récupère l'ID du premier document correspondant
+
+      // Vérifiez si une nouvelle image a été sélectionnée
+      if (_image != null) {
+        Reference ref = FirebaseStorage.instance.ref().child('images').child('product_$productId.jpg');
+        UploadTask uploadTask = ref.putFile(_image!);
+        TaskSnapshot taskSnapshot = await uploadTask.whenComplete(() => null);
+        String imageUrl = await taskSnapshot.ref.getDownloadURL();
+
+        // Mettre à jour toutes les données, y compris l'URL de la nouvelle image
+        Map<String, dynamic> updatedProductData = {
+          'nom': nomController.text,
+          'prix': double.parse(prixController.text),
+          'stock': int.parse(stockController.text),
+          'categorie': categorieController.text,
+          'description': descriptionController.text,
+          'image': imageUrl, // Ajoutez l'URL de la nouvelle image
+        };
+        await FirebaseFirestore.instance.collection('produits').doc(productId).update(updatedProductData);
+      } else {
+        // Mettre à jour toutes les données sauf l'image
+        Map<String, dynamic> updatedProductData = {
+          'nom': nomController.text,
+          'prix': double.parse(prixController.text),
+          'stock': int.parse(stockController.text),
+          'categorie': categorieController.text,
+          'description': descriptionController.text,
+        };
+        await FirebaseFirestore.instance.collection('produits').doc(productId).update(updatedProductData);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Produit mis à jour avec succès!')),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SearchPageWrapper(),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la mise à jour du produit: $e')),
+      );
+    }
+  }
+
+
+  Future<void> _getImage() async {
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+    }
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Détails du produit'),
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              onTap: () {
+                _getImage();
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: _image != null
+                    ? Image.file(
+                  _image!,
+                  height: 200,
+                  fit: BoxFit.cover,
+                )
+                    : Image.network(
+                  widget.product['image'],
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            SizedBox(height: 20),
+            _buildEditableDetailItem('Nom', nomController),
+            _buildEditableDetailItem('Prix', prixController),
+            _buildEditableDetailItem('Stock', stockController),
+            _buildEditableDetailItem('Catégorie', categorieController),
+            _buildEditableDetailItem('Description', descriptionController),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                updateProductData();
+              },
+              child: Text('Modifier'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                deleteProduct();
+              },
+              child: Text('Supprimer'),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          updateProductData();
+        },
+        child: Icon(Icons.add_shopping_cart),
+      ),
+    );
+  }
+
+  Widget _buildEditableDetailItem(String title, TextEditingController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(),
+            contentPadding: EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+          ),
+        ),
+        SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
 
 class CategoriesPage extends StatefulWidget {
   @override
@@ -189,18 +554,28 @@ class _CategoriesPageState extends State<CategoriesPage> {
   @override
   void initState() {
     super.initState();
-    loadJsonData(); // Charge les données JSON au démarrage de la page
+    loadFirestoreData(); // Charge les données JSON au démarrage de la page
   }
 
-  Future<void> loadJsonData() async {
-    String data = await DefaultAssetBundle.of(context).loadString('assets/data.json'); // Charge le fichier JSON
-    Map<String, dynamic> jsonData = json.decode(data); // Décode le JSON en une structure de données
-    List<dynamic> products = jsonData['produits']; // Récupère la liste de produits
-    setState(() {
-      productsData = products; // Met à jour les données des produits dans l'état du widget
-      uniqueCategories = Set.from(products.map((product) => product['categorie'])); // Récupère les catégories uniques
-    });
+  Future<void> loadFirestoreData() async {
+    try {
+      // Vérifiez que Firebase a été initialisé avant d'utiliser Firestore
+      if (Firebase.apps.length == 0) {
+        await Firebase.initializeApp();
+      }
+
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('produits').get();
+      List<dynamic> products = querySnapshot.docs.map((doc) => doc.data()).toList();
+      setState(() {
+        productsData = products;
+        uniqueCategories = Set.from(products.map((product) => product['categorie']));
+      });
+    } catch (e) {
+      print('Erreur lors du chargement des données Firestore : $e');
+    }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
