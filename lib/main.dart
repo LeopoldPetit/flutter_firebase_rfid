@@ -507,12 +507,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          updateProductData();
-        },
-        child: Icon(Icons.add_shopping_cart),
-      ),
     );
   }
 
