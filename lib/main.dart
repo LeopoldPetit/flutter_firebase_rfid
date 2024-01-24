@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:nordic_id/nordic_id.dart';
 import 'package:nordic_id/tag_epc.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -67,25 +68,60 @@ class _SearchPageWrapperState extends State<SearchPageWrapper> {
   @override
   void initState() {
     super.initState();
-    loadFirestoreData(); // Charge les données Firestore au démarrage de la page
+    loadDataWithRetry();
+
   }
 
   // Méthode pour charger les données Firestore
   Future<void> loadFirestoreData() async {
     try {
       // Vérifiez que Firebase a été initialisé avant d'utiliser Firestore
-      if (Firebase.apps.length == 0) {
+      if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp();
       }
 
       // Récupère les données de la collection 'produits' de Firestore
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('produits').get();
       List<dynamic> products = querySnapshot.docs.map((doc) => doc.data()).toList();
-      setState(() {
-        productsData = products; // Met à jour les données des produits
-      });
+
+      // Assurez-vous que le widget est toujours monté avant de mettre à jour l'état
+      if (mounted) {
+        setState(() {
+          productsData = products; // Met à jour les données des produits
+        });
+      }
     } catch (e) {
-      print('Erreur lors du chargement des données Firestore : $e'); // Affiche les erreurs de chargement des données
+      if (e is PlatformException) {
+        print('Erreur de plateforme lors du chargement des données Firestore : ${e.message}');
+      } else {
+        print('Erreur inattendue lors du chargement des données Firestore : $e');
+      }
+      throw e;
+    }
+  }
+  Future<void> loadDataWithRetry() async {
+    const maxRetryAttempts = 10; // Nombre maximal de tentatives
+    var retryAttempt = 0;
+
+    while (retryAttempt < maxRetryAttempts) {
+      try {
+        await loadFirestoreData();
+        // Si le chargement réussit, sortir de la boucle
+        break;
+      } catch (e) {
+        print('Erreur lors du chargement des données Firestore  azdadazd: $e');
+        retryAttempt++;
+
+        if (retryAttempt < maxRetryAttempts) {
+          print('Tentative de réessai #${retryAttempt + 1}');
+          // Attendre avant la prochaine tentative (peut être ajusté en fonction de vos besoins)
+          await Future.delayed(Duration(seconds: 2));
+        } else {
+          print('Échec après $maxRetryAttempts tentatives. Arrêt des réessais.');
+          // Gérer l'échec après plusieurs tentatives (peut être ajusté en fonction de vos besoins)
+          // Vous pouvez lancer une nouvelle exception, afficher un message à l'utilisateur, etc.
+        }
+      }
     }
   }
 
@@ -93,6 +129,7 @@ class _SearchPageWrapperState extends State<SearchPageWrapper> {
   @override
   Widget build(BuildContext context) {
     if (productsData.isEmpty) {
+      print("Les données ne sont pas encore chargées");
       return Scaffold(
         body: Center(
           child: CircularProgressIndicator(), // Affiche un indicateur de chargement si les données ne sont pas encore chargées
@@ -122,16 +159,67 @@ class _SearchPageWrapperState extends State<SearchPageWrapper> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => RFIDReaderPage(productsData: productsData), // Navigue vers la page de lecture RFID en passant les données des produits
+                      builder: (context) => RFIDReaderPage(productsData: productsData),
                     ),
                   );
                 },
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Connecter le lecteur RFID',
-                    style: TextStyle(fontSize: 18.0),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  primary: Colors.blue, // Background color
+                  onPrimary: Colors.white, // Text color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0), // Rounded corners
                   ),
+                ),
+                child: Text(
+                  'Verifier un article',
+                  style: TextStyle(fontSize: 16.0),
+                ),
+              ),
+              SizedBox(height: 16), // Add some space between buttons
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ProductTagComparisonPage(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  primary: Colors.blue, // Background color
+                  onPrimary: Colors.white, // Text color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                  ),
+                ),
+                child: Text(
+                  'Voir le stock',
+                  style: TextStyle(fontSize: 16.0),
+                ),
+              ),
+              SizedBox(height: 16), // Add some space between buttons
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RFIDReadersPage(productsData: productsData),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  primary: Colors.green, // Background color
+                  onPrimary: Colors.white, // Text color
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                  ),
+                ),
+                child: Text(
+                  'Faire le stock',
+                  style: TextStyle(fontSize: 16.0),
                 ),
               ),
               SizedBox(height: 20),
@@ -226,6 +314,7 @@ class _ProductDetailFormState extends State<ProductDetailForm> {
           'categorie': categorieController.text,
           'description': descriptionController.text,
           'image': imageUrl, // Ajoutez l'URL de l'image dans Firestore
+          'rfid': []
         };
 
         await FirebaseFirestore.instance.collection('produits').add(productData);
@@ -270,11 +359,19 @@ class _ProductDetailFormState extends State<ProductDetailForm> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _image != null
-              ? Image.file(_image!) // Affichage de l'image choisie
+              ? Image.file(_image!) // Display the chosen image
               : ElevatedButton(
             onPressed: () {
-              _getImage(); // Bouton pour sélectionner une image depuis la galerie
+              _getImage(); // Button to select an image from the gallery
             },
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              primary: Colors.blue, // Background color
+              onPrimary: Colors.white, // Text color
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.0), // Rounded corners
+              ),
+            ),
             child: Text('Ajouter une image'),
           ),
           _buildEditableDetailItem('Nom', nomController),
@@ -287,12 +384,21 @@ class _ProductDetailFormState extends State<ProductDetailForm> {
             onPressed: () {
               addProductToFirestore();
             },
+            style: ElevatedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              primary: Colors.green, // Background color
+              onPrimary: Colors.white, // Text color
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.0), // Rounded corners
+              ),
+            ),
             child: Text('Ajouter le produit'),
           ),
         ],
       ),
     );
   }
+
 
   Widget _buildEditableDetailItem(String title, TextEditingController controller) {
     return Column(
@@ -335,6 +441,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   late TextEditingController descriptionController;
   File? _image;
   final picker = ImagePicker();
+  late String productId;
+
 
   @override
   void initState() {
@@ -344,6 +452,22 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     stockController = TextEditingController(text: widget.product['stock'].toString());
     categorieController = TextEditingController(text: widget.product['categorie']);
     descriptionController = TextEditingController(text: widget.product['description']);
+    getProductId();
+  }
+
+  Future<void> getProductId() async {
+    try {
+      // Obtenez le document à partir de Firestore pour récupérer l'ID
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('produits')
+          .where('nom', isEqualTo: widget.product['nom']) // Utilisez un champ unique pour obtenir le document
+          .get();
+
+       productId = querySnapshot.docs.first.id; // Récupère l'ID du premier document correspondant
+
+    } catch (e) {
+      print('Erreur lors du chargement des Id Firestore : $e'); // Affiche les erreurs de chargement des données
+    }
   }
 
   @override
@@ -496,19 +620,47 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               onPressed: () {
                 updateProductData();
               },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
               child: Text('Modifier'),
             ),
             ElevatedButton(
               onPressed: () {
                 deleteProduct();
               },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.red, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
               child: Text('Supprimer'),
             ),
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RFIDReaderWriterPage(productId: productId),
+            ),
+          );
+        },
+        child: Icon(Icons.add_box),
+      ),
     );
   }
+
 
   Widget _buildEditableDetailItem(String title, TextEditingController controller) {
     return Column(
@@ -800,23 +952,26 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
   String _platformVersion = 'Unknown';
   List<TagEpc> _data = [];
   bool isConnectedStatus = false;
+  final NordicIdManager nordicIdManager = NordicIdManager();
 
   @override
   void initState() {
     super.initState();
     initPlatformState(); // Initialisation de la plateforme pour la lecture RFID
-    initializeNordicId(); // Initialisation de Nordic ID
+    nordicIdManager.initializeNordicId();
   }
 
   Future<void> initPlatformState() async {
     String platformVersion;
     try {
-      platformVersion = await NordicId.getPlatformVersion() ?? 'Plateforme non reconnue';
+      platformVersion =
+          await NordicId.getPlatformVersion() ?? 'Plateforme non reconnue';
     } on PlatformException {
       platformVersion = 'Impossible de récupérer la plateforme';
     }
 
-    NordicId.connectionStatusStream.receiveBroadcastStream().listen(updateConnection);
+    NordicId.connectionStatusStream.receiveBroadcastStream().listen(
+        updateConnection);
     NordicId.tagsStatusStream.receiveBroadcastStream().listen(updateTags);
 
     if (!mounted) return;
@@ -826,13 +981,6 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
     });
   }
 
-  Future<void> initializeNordicId() async {
-    try {
-      await NordicId.initialize;
-    } catch (e) {
-      print("Erreur lors de l'initialisation de Nordic ID : $e");
-    }
-  }
 
   void updateConnection(dynamic result) {
     setState(() {
@@ -847,7 +995,10 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
 
       // Recherche du produit correspondant au tag EPC scanné dans widget.productsData
       dynamic foundProduct = widget.productsData.firstWhere(
-            (product) => product['tag'] == tag.epc, // Vérifie si la propriété 'tag' correspond au tag EPC scanné
+            (product) {
+          final rfidList = product['rfid'];
+          return rfidList is List && rfidList.contains(tag.epc);
+        },
         orElse: () => null,
       );
 
@@ -856,7 +1007,7 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProductDetailPage(product: foundProduct), // Ouvre la page de détails pour le produit trouvé
+            builder: (context) => ProductDetailPage(product: foundProduct),
           ),
         );
       }
@@ -871,7 +1022,7 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Scanner les étiquettes RFID'),
+        title: Text('Scanner un article'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -880,21 +1031,32 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
           children: [
             ElevatedButton(
               onPressed: () async {
-                await NordicId.connect; // Connecte le lecteur RFID
+                await nordicIdManager.connect();
               },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
               child: Text('Appairer le lecteur RFID'),
             ),
             SizedBox(height: 16),
             ElevatedButton(
               onPressed: () async {
-                await NordicId.refreshTracing; // Rafraîchit le suivi RFID
+                await nordicIdManager.refreshTracing();
               },
-              child: Text('Scanner la puce RFID'),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Appareil connecté: $isConnectedStatus', // Affiche le statut de la connexion
-              style: TextStyle(color: Colors.blue.shade800, fontSize: 18),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Scanner article'),
             ),
             SizedBox(height: 20),
             Expanded(
@@ -923,6 +1085,528 @@ class _RFIDReaderPageState extends State<RFIDReaderPage> {
         ),
       ),
     );
+  }
+}
+
+  class RFIDReadersPage extends StatefulWidget {
+  final List<dynamic> productsData;
+
+  RFIDReadersPage({required this.productsData}); // Constructeur prenant les données des produits
+
+  @override
+  _RFIDReadersPageState createState() => _RFIDReadersPageState();
+}
+
+class _RFIDReadersPageState extends State<RFIDReadersPage> {
+  String _platformVersion = 'Unknown';
+  List<TagEpc> _data = [];
+  List<TagEpc> _allScannedTags = [];
+  bool isConnectedStatus = false;
+  final NordicIdManager nordicIdManager = NordicIdManager();
+  bool onPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    initPlatformState(); // Initialisation de la plateforme pour la lecture RFID
+    nordicIdManager.initializeNordicId();
+  }
+
+  Future<void> initPlatformState() async {
+    String platformVersion;
+    try {
+      platformVersion =
+          await NordicId.getPlatformVersion() ?? 'Plateforme non reconnue';
+    } on PlatformException {
+      platformVersion = 'Impossible de récupérer la plateforme';
+    }
+
+    NordicId.connectionStatusStream.receiveBroadcastStream().listen(
+        updateConnection);
+    NordicId.tagsStatusStream.receiveBroadcastStream().listen(updateTags);
+
+    if (!mounted) return;
+
+    setState(() {
+      _platformVersion = platformVersion;
+    });
+  }
+
+
+  void updateConnection(dynamic result) {
+    setState(() {
+      isConnectedStatus = result;
+    });
+  }
+
+  void updateTags(dynamic result) {
+    List<TagEpc> newTags = TagEpc.parseTags(result);
+
+    for (TagEpc tag in newTags) {
+      if (!_data.any((existingTag) => existingTag.epc == tag.epc)) {
+        _data.add(tag);
+      }
+    }
+
+    setState(() {});
+  }
+
+  Future<void> updateTagsInFirestore() async {
+    try {
+      // Get the document reference for the specific document in the 'tagScanner' collection
+      DocumentReference tagScannerDocRef = FirebaseFirestore.instance
+          .collection('tagScanner').doc('tagScanner');
+
+      // Extract the EPC values from _data
+      List<String> scannedEpcs = _data.map((tag) => tag.epc).toList();
+
+      // Update the 'rfid' field in the document using FieldValue.arrayUnion
+      await tagScannerDocRef.update(
+          {'rfid': FieldValue.arrayUnion(scannedEpcs)});
+
+      // Show a success toast message
+      Fluttertoast.showToast(
+        msg: 'produit enregistré avec succés',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      // Show an error toast message
+      Fluttertoast.showToast(
+        msg: 'Error updating RFID array in Firestore: $e',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Scanner les articles'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton(
+              onPressed: () async {
+                await nordicIdManager.connect();
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Appairer le lecteur RFID'),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () async {
+                onPressed = false;
+                await nordicIdManager.refreshTracing();
+              },
+              onLongPress: () async {
+                onPressed = true;
+                while (onPressed) {
+                  await nordicIdManager.refreshTracing();
+                  await Future.delayed(Duration(milliseconds: 100));
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Scanner'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                updateTagsInFirestore();
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.green, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Enregistrer le stock'),
+            ),
+            SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _data.length,
+                itemBuilder: (context, index) {
+                  return Card(
+                    color: Colors.blue.shade100,
+                    elevation: 2.0,
+                    margin: EdgeInsets.symmetric(vertical: 8.0),
+                    child: ListTile(
+                      title: Text(
+                        'Tag EPC: ${_data[index].epc}',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+  class RFIDReaderWriterPage extends StatefulWidget {
+  final String productId;
+
+  RFIDReaderWriterPage({required this.productId}); // Constructeur prenant les données des produits
+
+  @override
+  _RFIDReaderWriterPageState createState() => _RFIDReaderWriterPageState();
+}
+
+class _RFIDReaderWriterPageState extends State<RFIDReaderWriterPage> {
+  String _platformVersion = 'Unknown';
+  List<TagEpc> _data = [];
+  bool isConnectedStatus = false;
+  List<String> scannedTags = [];
+  final NordicIdManager nordicIdManager = NordicIdManager();
+  bool onPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    initPlatformState(); // Initialisation de la plateforme pour la lecture RFID
+    nordicIdManager.initializeNordicId();
+  }
+
+
+  Future<void> initPlatformState() async {
+    String platformVersion;
+    try {
+      platformVersion =
+          await NordicId.getPlatformVersion() ?? 'Plateforme non reconnue';
+    } on PlatformException {
+      platformVersion = 'Impossible de récupérer la plateforme';
+    }
+
+    NordicId.connectionStatusStream.receiveBroadcastStream().listen(
+        updateConnection);
+    NordicId.tagsStatusStream.receiveBroadcastStream().listen(updateTags);
+
+    if (!mounted) return;
+
+    setState(() {
+      _platformVersion = platformVersion;
+    });
+  }
+
+  void updateConnection(dynamic result) {
+    setState(() {
+      isConnectedStatus = result;
+    });
+  }
+
+  void updateTags(dynamic result) {
+    List<TagEpc> newTags = TagEpc.parseTags(result);
+
+    for (TagEpc tag in newTags) {
+      if (!_data.any((existingTag) => existingTag.epc == tag.epc)) {
+        _data.add(tag);
+      }
+    }
+
+    setState(() {});
+  }
+
+  Future<void> updateTagsInFirestore() async {
+    try {
+      List<String> scannedEpcs = _data.map((tag) => tag.epc).toList();
+      await FirebaseFirestore.instance
+          .collection('produits')
+          .doc(widget.productId)
+          .update({'rfid': FieldValue.arrayUnion(scannedEpcs)});
+
+      Fluttertoast.showToast(
+        msg: 'enregistré avec succés',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+      );
+    } catch (e) {
+      // Show an error toast message
+      Fluttertoast.showToast(
+        msg: 'Error updating RFID array in Firestore: $e',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+
+
+  Future<void> updateProductRfids(List<String> scannedEpcs) async {
+    try {
+      // Mise à jour du document avec la nouvelle liste de tags en ajoutant le champ rfid
+      await FirebaseFirestore.instance
+          .collection('produits')
+          .doc(widget.productId)
+          .update({'rfid': FieldValue.arrayUnion(scannedEpcs)});
+
+      print('Champ RFID mis à jour avec succès pour le produit ${widget
+          .productId} : $scannedEpcs');
+    } catch (e) {
+      print('Erreur lors de la mise à jour du champ RFID : $e');
+    }
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Ajouter des étiquettes'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton(
+              onPressed: () async {
+                await nordicIdManager.connect();
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Appairer le lecteur RFID'),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () async {
+                onPressed = false;
+                await nordicIdManager.refreshTracing();
+              },
+              onLongPress: () async {
+                onPressed = true;
+                while (onPressed) {
+                  await nordicIdManager.refreshTracing();
+                  await Future.delayed(Duration(milliseconds: 100));
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.blue, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('Scanner'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                updateTagsInFirestore();
+              },
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                primary: Colors.green, // Background color
+                onPrimary: Colors.white, // Text color
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0), // Rounded corners
+                ),
+              ),
+              child: Text('ajouter les etiquettes au produit'),
+            ),
+
+            SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _data.length,
+                itemBuilder: (context, index) {
+                  return Card(
+                    color: Colors.blue.shade100,
+                    elevation: 2.0,
+                    margin: EdgeInsets.symmetric(vertical: 8.0),
+                    child: ListTile(
+                      title: Text(
+                        'Tag EPC: ${_data[index].epc}',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+  class NordicIdManager {
+  static final NordicIdManager _instance = NordicIdManager._internal();
+
+  factory NordicIdManager() {
+    return _instance;
+  }
+
+  NordicIdManager._internal();
+
+  bool isConnected = false;
+
+  Future<void> initializeNordicId() async {
+    try {
+      await NordicId.initialize;
+      NordicId.connectionStatusStream.receiveBroadcastStream().listen(updateConnection);
+    } catch (e) {
+      print("Erreur lors de l'initialisation de Nordic ID : $e");
+    }
+  }
+
+  void updateConnection(dynamic result) {
+    isConnected = result;
+  }
+
+  Future<void> connect() async {
+    await NordicId.connect;
+  }
+
+  Future<void> refreshTracing() async {
+    await NordicId.refreshTracing;
+  }
+}
+
+class ProductTagComparisonPage extends StatefulWidget {
+  @override
+  _ProductTagComparisonPageState createState() =>
+      _ProductTagComparisonPageState();
+}
+
+class _ProductTagComparisonPageState extends State<ProductTagComparisonPage> {
+  List<String> matchingProducts = [];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Product Tag Comparison'),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ElevatedButton(
+            onPressed: () async {
+              // Fetch all tags from the 'tagScanner' collection
+              List<String> tagScannerTags = await getTagScannerTags();
+
+              // Fetch all products from the 'produits' collection
+              List<Product> products = await getProducts();
+
+              // Compare RFID values and find matching products
+              matchingProducts = findMatchingProducts(tagScannerTags, products);
+
+              // Update the UI
+              setState(() {});
+            },
+            child: Text('Compare Tags'),
+          ),
+          SizedBox(height: 20),
+          Expanded(
+            child: ListView.builder(
+              itemCount: matchingProducts.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(matchingProducts[index]),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<List<String>> getTagScannerTags() async {
+    QuerySnapshot tagScannerSnapshot =
+    await FirebaseFirestore.instance.collection('tagScanner').get();
+    List<String> tags = [];
+    for (QueryDocumentSnapshot doc in tagScannerSnapshot.docs) {
+      List<dynamic>? rfidArray = doc['rfid'];
+      if (rfidArray != null) {
+        tags.addAll(rfidArray.map((rfid) => rfid.toString()));
+      }
+    }
+    return tags;
+  }
+
+  Future<List<Product>> getProducts() async {
+    QuerySnapshot productsSnapshot =
+    await FirebaseFirestore.instance.collection('produits').get();
+    return productsSnapshot.docs
+        .map((doc) => Product.fromSnapshot(doc))
+        .toList();
+  }
+
+  List<String> findMatchingProducts(
+      List<String> tagScannerTags, List<Product> products) {
+    List<String> matchingProducts = [];
+    for (Product product in products) {
+      if (product.hasMatchingRfid(tagScannerTags)) {
+        matchingProducts.add(product.name);
+      }
+    }
+    return matchingProducts;
+  }
+}
+
+class Product {
+  final String name;
+  final dynamic rfid; // Peut être List<String> ou String
+
+  Product({required this.name, required this.rfid});
+
+  factory Product.fromSnapshot(QueryDocumentSnapshot snapshot) {
+    return Product(
+      name: snapshot['nom'] ?? 'Produit sans nom',
+      rfid: snapshot['rfid'] ?? [], // Utilisez une liste vide par défaut
+    );
+  }
+
+  bool hasMatchingRfid(List<String> tagScannerTags) {
+    if (rfid is List<String>) {
+      return (rfid as List<String>).any((rfid) => tagScannerTags.contains(rfid));
+    } else if (rfid is String) {
+      return tagScannerTags.contains(rfid);
+    }
+    return false;
   }
 }
 
