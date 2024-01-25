@@ -7,6 +7,7 @@ import 'package:nordic_id/nordic_id.dart';
 import 'package:nordic_id/tag_epc.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'AddProductPage.dart';
+import 'ProductTageComparaisonPage.dart';
 import 'RFIDReaderPage.dart';
 import 'RFIDReadersPage.dart';
 import 'SearchPage.dart';
